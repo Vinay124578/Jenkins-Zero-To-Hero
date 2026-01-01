@@ -1,4 +1,3 @@
-
 pipeline {
   agent {
     docker {
@@ -32,10 +31,9 @@ pipeline {
               -Dsonar.login=$SONAR_AUTH_TOKEN \
               -Dsonar.host.url=${SONAR_URL}
           '''
-        }
+          }
       }
-}
-
+    }
     stage('Build and Push Docker Image') {
       environment {
         DOCKER_IMAGE = "abhishekf5/ultimate-cicd:${BUILD_NUMBER}"
