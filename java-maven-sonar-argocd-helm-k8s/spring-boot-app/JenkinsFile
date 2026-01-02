@@ -20,17 +20,17 @@ pipeline {
       }
     }
     stage('Static Code Analysis') {
-    steps {
-      dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
-        withSonarQubeEnv('sonar-server') {
-          sh """
-            mvn clean verify \
-            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
-          """
+      steps {
+        dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+          withSonarQubeEnv('sonar-server') {
+            sh """
+              mvn clean verify \
+              org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+            """
+          }
         }
       }
     }
-  }
 
     }
     stage('Build and Push Docker Image') {
