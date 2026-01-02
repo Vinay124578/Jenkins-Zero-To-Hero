@@ -6,14 +6,15 @@ pipeline {
     }
   }
 
+  options {
+    skipDefaultCheckout(true)
+    timestamps()
+  }
+
   environment {
     DOCKER_IMAGE = "vinay124578/spring-boot-app"
     DOCKER_TAG   = "${BUILD_NUMBER}"
     SONARQUBE_ENV = "sonarqube-server"
-  }
-
-  options {
-    timestamps()
   }
 
   stages {
@@ -39,20 +40,14 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
         withSonarQubeEnv("${SONARQUBE_ENV}") {
-          sh '''
-            mvn sonar:sonar \
-            -Dsonar.projectKey=spring-boot-app \
-            -Dsonar.projectName=spring-boot-app
-          '''
+          sh 'mvn sonar:sonar'
         }
       }
     }
 
     stage('Build Docker Image') {
       steps {
-        sh '''
-          docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
-        '''
+        sh 'docker build -t $DOCKER_IMAGE:$DOCKER_TAG .'
       }
     }
 
@@ -65,35 +60,6 @@ pipeline {
           '''
         }
       }
-    }
-
-    stage('Update Deployment File') {
-      steps {
-        sh '''
-          sed -i "s|image:.*|image: $DOCKER_IMAGE:$DOCKER_TAG|" k8s/deployment.yaml
-        '''
-      }
-    }
-
-    stage('Commit & Push Manifest Changes') {
-      steps {
-        sh '''
-          git config user.email "jenkins@ci.com"
-          git config user.name "Jenkins CI"
-          git add k8s/deployment.yaml
-          git commit -m "Update image to $DOCKER_TAG"
-          git push origin main
-        '''
-      }
-    }
-  }
-
-  post {
-    success {
-      echo "✅ Pipeline completed successfully"
-    }
-    failure {
-      echo "❌ Pipeline failed"
     }
   }
 }
