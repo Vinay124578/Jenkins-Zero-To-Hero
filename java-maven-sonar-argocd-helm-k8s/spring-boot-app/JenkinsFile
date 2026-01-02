@@ -6,13 +6,14 @@ pipeline {
     }
   }
 
-  options {
-    skipDefaultCheckout(true)
-    timestamps()
+  environment {
+    DOCKER_IMAGE = "vinay124578/spring-boot-app"
+    DOCKER_TAG   = "${BUILD_NUMBER}"
+    SONARQUBE_ENV = "sonarqube-server"
   }
 
-  environment {
-    DOCKER_IMAGE = "abhishekf5/ultimate-cicd:${BUILD_NUMBER}"
+  options {
+    timestamps()
   }
 
   stages {
@@ -31,22 +32,18 @@ pipeline {
 
     stage('Build & Unit Test') {
       steps {
-        sh '''
-          cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-          mvn clean package
-        '''
+        sh 'mvn clean test'
       }
     }
 
-    stage('Static Code Analysis (SonarQube)') {
+    stage('SonarQube Analysis') {
       steps {
-        dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
-          withSonarQubeEnv('sonar-server') {
-            sh '''
-              mvn clean verify \
-              org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
-            '''
-          }
+        withSonarQubeEnv("${SONARQUBE_ENV}") {
+          sh '''
+            mvn sonar:sonar \
+            -Dsonar.projectKey=spring-boot-app \
+            -Dsonar.projectName=spring-boot-app
+          '''
         }
       }
     }
@@ -54,51 +51,49 @@ pipeline {
     stage('Build Docker Image') {
       steps {
         sh '''
-          cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-          docker build -t ${DOCKER_IMAGE} .
+          docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
         '''
       }
     }
 
     stage('Push Docker Image') {
       steps {
-        script {
-          docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
-            docker.image("${DOCKER_IMAGE}").push()
-          }
+        withCredentials([string(credentialsId: 'dockerhub-password', variable: 'DOCKER_PASSWORD')]) {
+          sh '''
+            echo $DOCKER_PASSWORD | docker login -u vinay124578 --password-stdin
+            docker push $DOCKER_IMAGE:$DOCKER_TAG
+          '''
         }
       }
     }
 
-    stage('Update Kubernetes Manifest') {
-      environment {
-        GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-        GIT_USER_NAME = "Vinay124578"
-      }
+    stage('Update Deployment File') {
       steps {
-        withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-          sh '''
-            git config user.email "jenkins@local"
-            git config user.name "Jenkins CI"
+        sh '''
+          sed -i "s|image:.*|image: $DOCKER_IMAGE:$DOCKER_TAG|" k8s/deployment.yaml
+        '''
+      }
+    }
 
-            sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" \
-              java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-
-            git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-            git commit -m "Update image tag to ${BUILD_NUMBER}"
-            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
-          '''
-        }
+    stage('Commit & Push Manifest Changes') {
+      steps {
+        sh '''
+          git config user.email "jenkins@ci.com"
+          git config user.name "Jenkins CI"
+          git add k8s/deployment.yaml
+          git commit -m "Update image to $DOCKER_TAG"
+          git push origin main
+        '''
       }
     }
   }
 
   post {
     success {
-      echo "✅ Pipeline completed successfully!"
+      echo "✅ Pipeline completed successfully"
     }
     failure {
-      echo "❌ Pipeline failed. Check logs."
+      echo "❌ Pipeline failed"
     }
   }
 }
